@@ -31,7 +31,11 @@ if (-not (Test-Path $snipsFolder)) {
 # =========================================================
 #  SETTINGS (position memory + preferences)
 # =========================================================
-$script:settings = @{ X = -1; Y = -1; AutoPaste = $false }
+# Modifier constants
+$MOD_ALT = 0x0001; $MOD_CTRL = 0x0002; $MOD_SHIFT = 0x0004; $MOD_WIN = 0x0008
+
+$script:settings = @{ X = -1; Y = -1; AutoPaste = $false; HotkeyMods = 6; HotkeyKey = 0x56 }
+# Default: Ctrl(2)+Shift(4)=6, V=0x56
 
 function Load-Settings {
     if (Test-Path $settingsFile) {
@@ -40,8 +44,142 @@ function Load-Settings {
             if ($null -ne $json.X) { $script:settings.X = $json.X }
             if ($null -ne $json.Y) { $script:settings.Y = $json.Y }
             if ($null -ne $json.AutoPaste) { $script:settings.AutoPaste = $json.AutoPaste }
+            if ($null -ne $json.HotkeyMods) { $script:settings.HotkeyMods = $json.HotkeyMods }
+            if ($null -ne $json.HotkeyKey) { $script:settings.HotkeyKey = $json.HotkeyKey }
         } catch {}
     }
+}
+
+function Get-HotkeyDisplayText {
+    $parts = @()
+    $mods = $script:settings.HotkeyMods
+    if ($mods -band $MOD_CTRL)  { $parts += "Ctrl" }
+    if ($mods -band $MOD_ALT)   { $parts += "Alt" }
+    if ($mods -band $MOD_SHIFT) { $parts += "Shift" }
+    if ($mods -band $MOD_WIN)   { $parts += "Win" }
+    $keyName = [System.Windows.Forms.Keys]$script:settings.HotkeyKey
+    $parts += $keyName.ToString()
+    return ($parts -join "+")
+}
+
+function Register-GlobalHotkey {
+    [HotKeyHelper]::UnregisterHotKey($form.Handle, $hotkeyId) | Out-Null
+    [HotKeyHelper]::RegisterHotKey(
+        $form.Handle, $hotkeyId,
+        [uint32]$script:settings.HotkeyMods,
+        [uint32]$script:settings.HotkeyKey
+    ) | Out-Null
+}
+
+function Show-HotkeyPicker {
+    $picker = New-Object System.Windows.Forms.Form
+    $picker.Text = "Set Hotkey"
+    $picker.Size = New-Object System.Drawing.Size(340, 200)
+    $picker.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+    $picker.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+    $picker.MaximizeBox = $false
+    $picker.MinimizeBox = $false
+    $picker.TopMost = $true
+    $picker.BackColor = [System.Drawing.Color]::FromArgb(35, 35, 38)
+    $picker.ForeColor = [System.Drawing.Color]::White
+    $picker.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+
+    $label = New-Object System.Windows.Forms.Label
+    $label.Text = "Press your desired hotkey combination:"
+    $label.Location = New-Object System.Drawing.Point(20, 20)
+    $label.Size = New-Object System.Drawing.Size(300, 25)
+    $label.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+    $picker.Controls.Add($label)
+
+    $hotkeyBox = New-Object System.Windows.Forms.TextBox
+    $hotkeyBox.Location = New-Object System.Drawing.Point(20, 55)
+    $hotkeyBox.Size = New-Object System.Drawing.Size(290, 35)
+    $hotkeyBox.Font = New-Object System.Drawing.Font("Segoe UI", 14)
+    $hotkeyBox.BackColor = [System.Drawing.Color]::FromArgb(55, 55, 58)
+    $hotkeyBox.ForeColor = [System.Drawing.Color]::White
+    $hotkeyBox.TextAlign = [System.Windows.Forms.HorizontalAlignment]::Center
+    $hotkeyBox.ReadOnly = $true
+    $hotkeyBox.Text = Get-HotkeyDisplayText
+    $hotkeyBox.Cursor = [System.Windows.Forms.Cursors]::Arrow
+    $picker.Controls.Add($hotkeyBox)
+
+    $script:pickedMods = $script:settings.HotkeyMods
+    $script:pickedKey = $script:settings.HotkeyKey
+    $script:pickedValid = $false
+
+    $hotkeyBox.Add_KeyDown({
+        param($sender, $e)
+        $e.SuppressKeyPress = $true
+        $e.Handled = $true
+
+        $mods = 0
+        if ($e.Control) { $mods = $mods -bor $MOD_CTRL }
+        if ($e.Alt)     { $mods = $mods -bor $MOD_ALT }
+        if ($e.Shift)   { $mods = $mods -bor $MOD_SHIFT }
+
+        $key = $e.KeyCode
+        # Ignore standalone modifier keys
+        if ($key -eq [System.Windows.Forms.Keys]::ControlKey -or
+            $key -eq [System.Windows.Forms.Keys]::ShiftKey -or
+            $key -eq [System.Windows.Forms.Keys]::Menu -or
+            $key -eq [System.Windows.Forms.Keys]::LMenu -or
+            $key -eq [System.Windows.Forms.Keys]::RMenu) {
+            # Show partial combo while holding modifiers
+            $parts = @()
+            if ($mods -band $MOD_CTRL)  { $parts += "Ctrl" }
+            if ($mods -band $MOD_ALT)   { $parts += "Alt" }
+            if ($mods -band $MOD_SHIFT) { $parts += "Shift" }
+            $parts += "..."
+            $hotkeyBox.Text = ($parts -join "+")
+            return
+        }
+
+        if ($mods -eq 0) {
+            $hotkeyBox.Text = "(need Ctrl, Alt, or Shift + a key)"
+            $script:pickedValid = $false
+            return
+        }
+
+        $script:pickedMods = $mods
+        $script:pickedKey = [int]$key
+        $script:pickedValid = $true
+
+        $parts = @()
+        if ($mods -band $MOD_CTRL)  { $parts += "Ctrl" }
+        if ($mods -band $MOD_ALT)   { $parts += "Alt" }
+        if ($mods -band $MOD_SHIFT) { $parts += "Shift" }
+        $parts += $key.ToString()
+        $hotkeyBox.Text = ($parts -join "+")
+    })
+
+    $btnSave = New-Object System.Windows.Forms.Button
+    $btnSave.Text = "Save"
+    $btnSave.Location = New-Object System.Drawing.Point(110, 110)
+    $btnSave.Size = New-Object System.Drawing.Size(100, 35)
+    $btnSave.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnSave.BackColor = [System.Drawing.Color]::FromArgb(0, 150, 136)
+    $btnSave.ForeColor = [System.Drawing.Color]::White
+    $btnSave.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $btnSave.FlatAppearance.BorderSize = 0
+    $btnSave.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $btnSave.Add_Click({
+        if ($script:pickedValid) {
+            $script:settings.HotkeyMods = $script:pickedMods
+            $script:settings.HotkeyKey = $script:pickedKey
+            Save-Settings
+            Register-GlobalHotkey
+            $notifyIcon.BalloonTipTitle = "ClipFloat"
+            $notifyIcon.BalloonTipText = "Hotkey changed to $(Get-HotkeyDisplayText)"
+            $notifyIcon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
+            $notifyIcon.ShowBalloonTip(2000)
+        }
+        $picker.Close()
+    })
+    $picker.Controls.Add($btnSave)
+
+    $picker.Add_Shown({ $hotkeyBox.Focus() })
+    $picker.ShowDialog()
+    $picker.Dispose()
 }
 
 function Save-Settings {
@@ -436,10 +574,11 @@ function Build-ContextMenu {
 
     $contextMenu.Items.Add("-") | Out-Null
 
-    # --- Hotkey info ---
-    $hotkeyItem = New-Object System.Windows.Forms.ToolStripMenuItem("Hotkey: Ctrl+Shift+V")
-    $hotkeyItem.ForeColor = [System.Drawing.Color]::Gray
-    $hotkeyItem.Enabled = $false
+    # --- Change hotkey ---
+    $hotkeyDisplay = Get-HotkeyDisplayText
+    $hotkeyItem = New-Object System.Windows.Forms.ToolStripMenuItem("Hotkey: $hotkeyDisplay  (click to change)")
+    $hotkeyItem.ForeColor = [System.Drawing.Color]::FromArgb(180, 180, 180)
+    $hotkeyItem.Add_Click({ Show-HotkeyPicker })
     $contextMenu.Items.Add($hotkeyItem) | Out-Null
 
     $contextMenu.Items.Add("-") | Out-Null
@@ -682,17 +821,12 @@ $form.Add_MouseClick({
 })
 
 # =========================================================
-#  GLOBAL HOTKEY: Ctrl+Shift+V
+#  GLOBAL HOTKEY (configurable)
 # =========================================================
 $hotkeyId = 9001
 
-# Override WndProc to catch hotkey message
 $form.Add_HandleCreated({
-    [HotKeyHelper]::RegisterHotKey(
-        $form.Handle, $hotkeyId,
-        ([HotKeyHelper]::MOD_CTRL -bor [HotKeyHelper]::MOD_SHIFT),
-        [HotKeyHelper]::VK_V
-    ) | Out-Null
+    Register-GlobalHotkey
 })
 
 # Message filter for WM_HOTKEY
