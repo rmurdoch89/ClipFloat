@@ -3,3 +3,6 @@ snip_*.png
 
 # Desktop shortcut
 *.lnk
+
+# User settings
+clipfloat.json
