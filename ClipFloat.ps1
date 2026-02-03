@@ -112,6 +112,67 @@ $iconBrush.Dispose()
 $iconG.Dispose()
 $notifyIcon.Icon = [System.Drawing.Icon]::FromHandle($iconBmp.GetHicon())
 
+# --- Tray icon context menu ---
+$trayMenu = New-Object System.Windows.Forms.ContextMenuStrip
+$trayMenu.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 48)
+$trayMenu.ForeColor = [System.Drawing.Color]::White
+$trayMenu.ShowImageMargin = $false
+$trayMenu.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+
+$trayShowItem = New-Object System.Windows.Forms.ToolStripMenuItem("Hide Bubble")
+$trayShowItem.ForeColor = [System.Drawing.Color]::White
+$trayShowItem.Add_Click({
+    if ($script:bubbleVisible) {
+        $form.Hide()
+        $script:bubbleVisible = $false
+        $trayShowItem.Text = "Show Bubble"
+    } else {
+        $form.Show()
+        $form.TopMost = $true
+        $script:bubbleVisible = $true
+        $trayShowItem.Text = "Hide Bubble"
+    }
+})
+$trayMenu.Items.Add($trayShowItem) | Out-Null
+
+$trayCaptureItem = New-Object System.Windows.Forms.ToolStripMenuItem("Capture Clipboard")
+$trayCaptureItem.ForeColor = [System.Drawing.Color]::White
+$trayCaptureItem.Add_Click({ Invoke-Capture })
+$trayMenu.Items.Add($trayCaptureItem) | Out-Null
+
+$trayMenu.Items.Add("-") | Out-Null
+
+$trayOpenItem = New-Object System.Windows.Forms.ToolStripMenuItem("Open Snips Folder")
+$trayOpenItem.ForeColor = [System.Drawing.Color]::White
+$trayOpenItem.Add_Click({ Start-Process "explorer.exe" $snipsFolder })
+$trayMenu.Items.Add($trayOpenItem) | Out-Null
+
+$trayMenu.Items.Add("-") | Out-Null
+
+$trayQuitItem = New-Object System.Windows.Forms.ToolStripMenuItem("Quit ClipFloat")
+$trayQuitItem.ForeColor = [System.Drawing.Color]::FromArgb(220, 100, 100)
+$trayQuitItem.Add_Click({
+    $script:reallyClosing = $true
+    $form.Close()
+})
+$trayMenu.Items.Add($trayQuitItem) | Out-Null
+
+$notifyIcon.ContextMenuStrip = $trayMenu
+
+# Double-click tray icon to toggle bubble
+$notifyIcon.Add_DoubleClick({
+    if ($script:bubbleVisible) {
+        $form.Hide()
+        $script:bubbleVisible = $false
+        $trayShowItem.Text = "Show Bubble"
+    } else {
+        $form.Show()
+        $form.TopMost = $true
+        $script:bubbleVisible = $true
+        $trayShowItem.Text = "Hide Bubble"
+    }
+})
+
 # =========================================================
 #  STATE
 # =========================================================
@@ -120,6 +181,8 @@ $script:dragStart = New-Object System.Drawing.Point(0, 0)
 $script:iconMode = "default"
 $script:autoPasteEnabled = $script:settings.AutoPaste
 $script:lastClipHash = ""
+$script:reallyClosing = $false
+$script:bubbleVisible = $true
 
 # =========================================================
 #  TOOLTIP
@@ -275,6 +338,7 @@ public class DarkMenuRenderer : ToolStripProfessionalRenderer {
 "@ -ReferencedAssemblies System.Drawing, System.Windows.Forms
 
 $contextMenu.Renderer = New-Object DarkMenuRenderer
+$trayMenu.Renderer = New-Object DarkMenuRenderer
 
 function Build-ContextMenu {
     $contextMenu.Items.Clear()
@@ -380,11 +444,28 @@ function Build-ContextMenu {
 
     $contextMenu.Items.Add("-") | Out-Null
 
-    # --- Close ---
-    $closeItem = New-Object System.Windows.Forms.ToolStripMenuItem("Close ClipFloat")
-    $closeItem.ForeColor = [System.Drawing.Color]::FromArgb(220, 100, 100)
-    $closeItem.Add_Click({ $form.Close() })
-    $contextMenu.Items.Add($closeItem) | Out-Null
+    # --- Hide bubble ---
+    $hideItem = New-Object System.Windows.Forms.ToolStripMenuItem("Hide Bubble")
+    $hideItem.ForeColor = [System.Drawing.Color]::White
+    $hideItem.Add_Click({
+        $form.Hide()
+        $script:bubbleVisible = $false
+        $trayShowItem.Text = "Show Bubble"
+        $notifyIcon.BalloonTipTitle = "ClipFloat"
+        $notifyIcon.BalloonTipText = "Running in system tray. Double-click tray icon to show."
+        $notifyIcon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
+        $notifyIcon.ShowBalloonTip(2000)
+    })
+    $contextMenu.Items.Add($hideItem) | Out-Null
+
+    # --- Quit ---
+    $quitItem = New-Object System.Windows.Forms.ToolStripMenuItem("Quit ClipFloat")
+    $quitItem.ForeColor = [System.Drawing.Color]::FromArgb(220, 100, 100)
+    $quitItem.Add_Click({
+        $script:reallyClosing = $true
+        $form.Close()
+    })
+    $contextMenu.Items.Add($quitItem) | Out-Null
 }
 
 # =========================================================
@@ -637,9 +718,25 @@ $filter.Add_HotKeyPressed({ Invoke-Capture })
 [System.Windows.Forms.Application]::AddMessageFilter($filter)
 
 # =========================================================
-#  CLEANUP ON CLOSE
+#  CLOSE BEHAVIOR: minimize to tray unless quitting
 # =========================================================
 $form.Add_FormClosing({
+    param($sender, $e)
+
+    if (-not $script:reallyClosing) {
+        # Hide to tray instead of closing
+        $e.Cancel = $true
+        $form.Hide()
+        $script:bubbleVisible = $false
+        $trayShowItem.Text = "Show Bubble"
+        $notifyIcon.BalloonTipTitle = "ClipFloat"
+        $notifyIcon.BalloonTipText = "Running in system tray. Double-click tray icon to show."
+        $notifyIcon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
+        $notifyIcon.ShowBalloonTip(2000)
+        return
+    }
+
+    # Actually quitting
     [HotKeyHelper]::UnregisterHotKey($form.Handle, $hotkeyId) | Out-Null
     $notifyIcon.Visible = $false
     $notifyIcon.Dispose()
