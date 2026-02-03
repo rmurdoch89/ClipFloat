@@ -7,11 +7,12 @@ echo.
 
 :: Kill running instance
 echo  [1/4] Stopping ClipFloat...
-powershell -ExecutionPolicy Bypass -Command "Get-WmiObject Win32_Process -Filter \"Name='powershell.exe'\" | Where-Object { $_.CommandLine -like '*FloatingSnip*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+taskkill /f /im ClipFloat.exe >nul 2>&1
 echo        Done.
 
 :: Remove from startup
 echo  [2/4] Removing from startup...
+del "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\ClipFloat.lnk" >nul 2>&1
 del "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\FloatingSnip.bat" >nul 2>&1
 echo        Done.
 
@@ -23,16 +24,15 @@ echo        Done.
 
 :: Ask about saved snips
 echo  [4/4] Checking saved snips...
-set "SNIPDIR=%~dp0"
-dir /b "%SNIPDIR%snip_*.png" >nul 2>&1
+dir /b "%USERPROFILE%\ClaudeSnips\snip_*.png" >nul 2>&1
 if %errorlevel%==0 (
     echo.
     set /p DELSNIPS="        Delete saved snips? (y/n): "
     if /i "%DELSNIPS%"=="y" (
-        del "%SNIPDIR%snip_*.png" >nul 2>&1
+        del "%USERPROFILE%\ClaudeSnips\snip_*.png" >nul 2>&1
         echo        Snips deleted.
     ) else (
-        echo        Snips kept in %SNIPDIR%
+        echo        Snips kept in %USERPROFILE%\ClaudeSnips
     )
 ) else (
     echo        No saved snips found.

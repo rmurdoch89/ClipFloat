@@ -8,23 +8,22 @@ echo.
 :: Get the directory where this script lives
 set "SCRIPTDIR=%~dp0"
 
+:: Create snips folder
+if not exist "%USERPROFILE%\ClaudeSnips" mkdir "%USERPROFILE%\ClaudeSnips"
+
 :: Add to Windows startup
 echo  [1/3] Adding to Windows startup...
-copy /Y "%SCRIPTDIR%FloatingSnip.bat" "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\FloatingSnip.bat" >nul 2>&1
-if %errorlevel%==0 (
-    echo        Done.
-) else (
-    echo        Warning: Could not add to startup.
-)
+powershell -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut([System.IO.Path]::Combine($env:APPDATA, 'Microsoft\Windows\Start Menu\Programs\Startup', 'ClipFloat.lnk')); $sc.TargetPath = '%SCRIPTDIR%ClipFloat.exe'; $sc.WorkingDirectory = '%SCRIPTDIR%'; $sc.Description = 'ClipFloat - Clipboard to Claude Code bridge'; $sc.Save()"
+echo        Done.
 
 :: Create desktop shortcut
 echo  [2/3] Creating desktop shortcut...
-powershell -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut([System.IO.Path]::Combine($env:USERPROFILE, 'Desktop', 'ClipFloat.lnk')); $sc.TargetPath = '%SCRIPTDIR%FloatingSnip.bat'; $sc.WorkingDirectory = '%SCRIPTDIR%'; $sc.Description = 'Launch ClipFloat'; $sc.Save()"
+powershell -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut([System.IO.Path]::Combine($env:USERPROFILE, 'Desktop', 'ClipFloat.lnk')); $sc.TargetPath = '%SCRIPTDIR%ClipFloat.exe'; $sc.WorkingDirectory = '%SCRIPTDIR%'; $sc.Description = 'ClipFloat - Clipboard to Claude Code bridge'; $sc.Save()"
 echo        Done.
 
 :: Launch ClipFloat
 echo  [3/3] Launching ClipFloat...
-start "" "%SCRIPTDIR%FloatingSnip.bat"
+start "" "%SCRIPTDIR%ClipFloat.exe"
 echo        Done.
 
 echo.
