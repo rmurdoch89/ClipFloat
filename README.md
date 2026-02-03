@@ -16,27 +16,63 @@ The installer adds ClipFloat to startup, creates a desktop shortcut, and launche
 
 ## How to Use
 
-1. **Win+Shift+S** to snip your screen (or **Ctrl+C** on any image file in Explorer)
-2. **Click the floating bubble**
-3. **Ctrl+V** into Claude Code to paste the file path
+| Action | What happens |
+|---|---|
+| **Win+Shift+S** then **click bubble** | Saves screenshot, copies path to clipboard |
+| **Ctrl+C** on image file then **click bubble** | Copies that file's path to clipboard |
+| **Ctrl+Shift+V** (global hotkey) | Same as clicking — works from any app |
+| **Drag image file onto bubble** | Copies that file's path to clipboard |
+| **Ctrl+V** in Claude Code | Pastes the file path |
+
+## Features
 
 ### Visual Feedback
 
-| Bubble colour | Meaning |
+| Bubble | Meaning |
 |---|---|
 | Teal (default) | Ready |
-| Green flash | Success — path copied to clipboard |
-| Red flash | No image found on clipboard |
+| Green flash + checkmark | Success — path copied |
+| Red flash + X | No image found on clipboard |
+| Green dot (bottom-right) | Auto-paste mode is active |
+
+### Global Hotkey
+
+Press **Ctrl+Shift+V** from any application to capture the clipboard image — no need to click the bubble. Works even when the bubble is behind other windows.
+
+### Auto-Paste Mode
+
+Right-click the bubble and toggle **Auto-Paste**. When enabled, ClipFloat watches your clipboard and automatically saves any new screenshot and copies its path — completely hands-free. A small green dot appears on the bubble when active.
+
+### Drag and Drop
+
+Drag any image file from Explorer directly onto the bubble. The file path is copied to your clipboard instantly.
+
+### Recent Snips History
+
+Right-click and hover over **Recent Snips** to see your last 10 screenshots. Click any entry to re-copy its path.
+
+### Auto-Cleanup
+
+Screenshots older than 7 days are automatically deleted on startup, keeping your snips folder tidy.
+
+### Position Memory
+
+Drag the bubble anywhere on screen. Your position is saved and restored across restarts, including multi-monitor setups.
+
+### Notification Toasts
+
+A brief Windows notification confirms each capture with the filename.
 
 ### Right-Click Menu
 
-- **Open Snips Folder** — view saved screenshots
-- **Clear All Snips** — delete all saved screenshots
+- **Recent Snips** — last 10 captures, click to re-copy path
+- **Auto-Paste: ON/OFF** — toggle automatic clipboard monitoring
+- **Open Snips Folder** — view saved screenshots in Explorer
+- **Clear All Snips** — delete all saved screenshots (with confirmation)
+- **Hotkey: Ctrl+Shift+V** — reminder of the global shortcut
 - **Close ClipFloat** — close the bubble
 
-The bubble is draggable — just click and drag it anywhere on screen.
-
-## Supported Formats
+## Supported Image Formats
 
 PNG, JPG, JPEG, GIF, BMP, WEBP, TIFF, TIF, ICO, SVG
 
