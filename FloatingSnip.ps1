@@ -28,7 +28,32 @@ $form.Region = New-Object System.Drawing.Region($path)
 
 # Tooltip
 $tooltip = New-Object System.Windows.Forms.ToolTip
-$tooltip.SetToolTip($form, "Click: Save clipboard snip`nRight-click: Close`nDrag to move")
+$tooltip.SetToolTip($form, "Click: Save clipboard snip`nRight-click: Menu`nDrag to move")
+
+# Right-click context menu
+$contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
+
+$contextMenu.Items.Add("Open Snips Folder", $null, {
+    Start-Process "explorer.exe" "C:\Users\Rob\ClaudeSnips"
+}) | Out-Null
+
+$contextMenu.Items.Add("Clear All Snips", $null, {
+    $snips = Get-ChildItem "C:\Users\Rob\ClaudeSnips\snip_*.png" -ErrorAction SilentlyContinue
+    $count = ($snips | Measure-Object).Count
+    if ($count -gt 0) {
+        $result = [System.Windows.Forms.MessageBox]::Show(
+            "Delete $count saved snip(s)?", "ClipFloat",
+            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+            [System.Windows.Forms.MessageBoxIcon]::Question)
+        if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+            $snips | Remove-Item -Force
+        }
+    }
+}) | Out-Null
+
+$contextMenu.Items.Add("-") | Out-Null
+
+$contextMenu.Items.Add("Close ClipFloat", $null, { $form.Close() }) | Out-Null
 
 # State tracking
 $script:dragging = $false
@@ -141,7 +166,7 @@ $form.Add_MouseClick({
     param($sender, $e)
     try {
         if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
-            $form.Close()
+            $contextMenu.Show($form, $e.Location)
             return
         }
 
