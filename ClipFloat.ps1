@@ -203,7 +203,17 @@ try {
 # =========================================================
 #  FORM SETUP
 # =========================================================
-$size = 50
+$size = 56
+
+# Load orb image
+$script:orbImage = $null
+$orbPath = [System.IO.Path]::Combine($PSScriptRoot, "orb.png")
+if (-not (Test-Path $orbPath)) {
+    $orbPath = [System.IO.Path]::Combine($snipsFolder, "orb.png")
+}
+if (Test-Path $orbPath) {
+    $script:orbImage = New-Object System.Drawing.Bitmap($orbPath)
+}
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "ClipFloat"
@@ -213,7 +223,9 @@ $form.TopMost = $true
 $form.ShowInTaskbar = $false
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
 $form.BackColor = [System.Drawing.Color]::FromArgb(0, 150, 136)
-$form.Opacity = 0.92
+$form.TransparencyKey = [System.Drawing.Color]::FromArgb(1, 1, 1)
+$form.BackColor = [System.Drawing.Color]::FromArgb(1, 1, 1)
+$form.Opacity = 0.95
 $form.AllowDrop = $true
 
 $form.GetType().GetProperty("DoubleBuffered",
@@ -224,13 +236,8 @@ $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
 if ($script:settings.X -ge 0 -and $script:settings.Y -ge 0) {
     $form.Location = New-Object System.Drawing.Point($script:settings.X, $script:settings.Y)
 } else {
-    $form.Location = New-Object System.Drawing.Point(($screen.Right - 70), 20)
+    $form.Location = New-Object System.Drawing.Point(($screen.Right - 76), 20)
 }
-
-# Smooth circle shape
-$gpath = New-Object System.Drawing.Drawing2D.GraphicsPath
-$gpath.AddEllipse(0, 0, ($size - 1), ($size - 1))
-$form.Region = New-Object System.Drawing.Region($gpath)
 
 # =========================================================
 #  SYSTEM TRAY ICON (for notifications)
@@ -239,14 +246,19 @@ $notifyIcon = New-Object System.Windows.Forms.NotifyIcon
 $notifyIcon.Text = "ClipFloat"
 $notifyIcon.Visible = $true
 
-# Create a tray icon programmatically (teal circle)
+# Create tray icon from orb image or fallback to teal circle
 $iconBmp = New-Object System.Drawing.Bitmap(16, 16)
 $iconG = [System.Drawing.Graphics]::FromImage($iconBmp)
 $iconG.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+$iconG.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
 $iconG.Clear([System.Drawing.Color]::Transparent)
-$iconBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(0, 150, 136))
-$iconG.FillEllipse($iconBrush, 1, 1, 14, 14)
-$iconBrush.Dispose()
+if ($null -ne $script:orbImage) {
+    $iconG.DrawImage($script:orbImage, 0, 0, 16, 16)
+} else {
+    $iconBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(0, 150, 136))
+    $iconG.FillEllipse($iconBrush, 1, 1, 14, 14)
+    $iconBrush.Dispose()
+}
 $iconG.Dispose()
 $notifyIcon.Icon = [System.Drawing.Icon]::FromHandle($iconBmp.GetHicon())
 
@@ -394,7 +406,6 @@ function Invoke-Capture {
 
     if ($null -eq $filePath) {
         $script:iconMode = "error"
-        $form.BackColor = [System.Drawing.Color]::FromArgb(200, 50, 50)
         $form.Invalidate()
         $flashTimer.Start()
         return
@@ -403,7 +414,6 @@ function Invoke-Capture {
     [System.Windows.Forms.Clipboard]::SetText($filePath)
 
     $script:iconMode = "success"
-    $form.BackColor = [System.Drawing.Color]::FromArgb(50, 180, 50)
     $form.Invalidate()
     $flashTimer.Start()
 
@@ -608,67 +618,64 @@ function Build-ContextMenu {
 }
 
 # =========================================================
-#  PAINT: viewfinder icon with auto-paste indicator
+#  PAINT: orb image with status overlays
 # =========================================================
 $form.Add_Paint({
     param($sender, $e)
     $g = $e.Graphics
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
     $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
 
-    # Subtle rim
-    $rimPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(50, 255, 255, 255), 1.5)
-    $g.DrawEllipse($rimPen, 1, 1, ($size - 3), ($size - 3))
-    $rimPen.Dispose()
+    # Draw the orb image
+    if ($null -ne $script:orbImage) {
+        $g.DrawImage($script:orbImage, 0, 0, $size, $size)
+    } else {
+        # Fallback: draw teal circle
+        $fallbackBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(0, 150, 136))
+        $g.FillEllipse($fallbackBrush, 2, 2, ($size - 4), ($size - 4))
+        $fallbackBrush.Dispose()
+    }
 
-    $white = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 2.2)
-    $whiteBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
-
+    # Status overlays
     if ($script:iconMode -eq "success") {
-        # Checkmark
-        $white.Width = 3
-        $g.DrawLine($white, 15, 26, 22, 33)
-        $g.DrawLine($white, 22, 33, 35, 18)
+        # Semi-transparent green overlay
+        $overlayBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(140, 50, 200, 50))
+        $g.FillEllipse($overlayBrush, 3, 3, ($size - 6), ($size - 6))
+        $overlayBrush.Dispose()
+        # White checkmark
+        $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 3.5)
+        $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $cx = $size / 2; $cy = $size / 2
+        $g.DrawLine($pen, ($cx - 10), $cy, ($cx - 3), ($cy + 8))
+        $g.DrawLine($pen, ($cx - 3), ($cy + 8), ($cx + 12), ($cy - 8))
+        $pen.Dispose()
     }
     elseif ($script:iconMode -eq "error") {
-        # X mark
-        $white.Width = 3
-        $g.DrawLine($white, 16, 16, 34, 34)
-        $g.DrawLine($white, 34, 16, 16, 34)
-    }
-    else {
-        # Viewfinder icon
-        $cx = $size / 2
-        $cy = $size / 2
-        $r = 12
-
-        $g.DrawEllipse($white, ($cx - $r), ($cy - $r), ($r * 2), ($r * 2))
-
-        $b = 6; $o = 6
-        $g.DrawLine($white, ($cx - $o - $b), ($cy - $o), ($cx - $o), ($cy - $o))
-        $g.DrawLine($white, ($cx - $o), ($cy - $o), ($cx - $o), ($cy - $o - $b))
-        $g.DrawLine($white, ($cx + $o + $b), ($cy - $o), ($cx + $o), ($cy - $o))
-        $g.DrawLine($white, ($cx + $o), ($cy - $o), ($cx + $o), ($cy - $o - $b))
-        $g.DrawLine($white, ($cx - $o - $b), ($cy + $o), ($cx - $o), ($cy + $o))
-        $g.DrawLine($white, ($cx - $o), ($cy + $o), ($cx - $o), ($cy + $o + $b))
-        $g.DrawLine($white, ($cx + $o + $b), ($cy + $o), ($cx + $o), ($cy + $o))
-        $g.DrawLine($white, ($cx + $o), ($cy + $o), ($cx + $o), ($cy + $o + $b))
-
-        $g.FillEllipse($whiteBrush, ($cx - 2.5), ($cy - 2.5), 5, 5)
+        # Semi-transparent red overlay
+        $overlayBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(140, 200, 50, 50))
+        $g.FillEllipse($overlayBrush, 3, 3, ($size - 6), ($size - 6))
+        $overlayBrush.Dispose()
+        # White X
+        $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 3.5)
+        $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $cx = $size / 2; $cy = $size / 2
+        $g.DrawLine($pen, ($cx - 9), ($cy - 9), ($cx + 9), ($cy + 9))
+        $g.DrawLine($pen, ($cx + 9), ($cy - 9), ($cx - 9), ($cy + 9))
+        $pen.Dispose()
     }
 
     # Auto-paste indicator dot (bottom-right)
     if ($script:autoPasteEnabled) {
         $dotBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(100, 220, 100))
-        $g.FillEllipse($dotBrush, ($size - 14), ($size - 14), 8, 8)
-        $dotBorder = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(0, 120, 108), 1)
-        $g.DrawEllipse($dotBorder, ($size - 14), ($size - 14), 8, 8)
+        $g.FillEllipse($dotBrush, ($size - 16), ($size - 16), 10, 10)
+        $dotBorder = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 1.5)
+        $g.DrawEllipse($dotBorder, ($size - 16), ($size - 16), 10, 10)
         $dotBrush.Dispose()
         $dotBorder.Dispose()
     }
-
-    $white.Dispose()
-    $whiteBrush.Dispose()
 })
 
 # =========================================================
@@ -712,7 +719,6 @@ $form.Add_DragEnter({
             $ext = [System.IO.Path]::GetExtension($f).ToLower()
             if ($imageExts -contains $ext) {
                 $e.Effect = [System.Windows.Forms.DragDropEffects]::Copy
-                $form.BackColor = [System.Drawing.Color]::FromArgb(0, 180, 160)
                 return
             }
         }
@@ -721,9 +727,7 @@ $form.Add_DragEnter({
 })
 
 $form.Add_DragLeave({
-    if ($script:iconMode -eq "default") {
-        $form.BackColor = [System.Drawing.Color]::FromArgb(0, 150, 136)
-    }
+    $form.Invalidate()
 })
 
 $form.Add_DragDrop({
@@ -739,7 +743,6 @@ $form.Add_DragDrop({
         }
     } catch {
         $script:iconMode = "error"
-        $form.BackColor = [System.Drawing.Color]::FromArgb(200, 50, 50)
         $form.Invalidate()
         $flashTimer.Start()
     }
@@ -755,7 +758,6 @@ $flashTimer.Interval = 800
 $flashTimer.Add_Tick({
     $flashTimer.Stop()
     $script:iconMode = "default"
-    $form.BackColor = [System.Drawing.Color]::FromArgb(0, 150, 136)
     $form.Invalidate()
 })
 
@@ -814,7 +816,6 @@ $form.Add_MouseClick({
         Invoke-Capture
     } catch {
         $script:iconMode = "error"
-        $form.BackColor = [System.Drawing.Color]::FromArgb(200, 50, 50)
         $form.Invalidate()
         $flashTimer.Start()
     }
