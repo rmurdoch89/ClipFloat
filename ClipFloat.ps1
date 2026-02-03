@@ -18,14 +18,14 @@ public class HotKeyHelper {
 # =========================================================
 #  CONFIG
 # =========================================================
-$snipsFolder = [System.IO.Path]::Combine($env:USERPROFILE, "ClaudeSnips")
-$settingsFile = [System.IO.Path]::Combine($snipsFolder, "clipfloat.json")
+$appFolder = [System.IO.Path]::Combine($env:USERPROFILE, "ClaudeSnips")
+$settingsFile = [System.IO.Path]::Combine($appFolder, "clipfloat.json")
 $maxHistoryItems = 10
 $autoCleanupDays = 7
 $imageExts = @('.png','.jpg','.jpeg','.gif','.bmp','.webp','.tiff','.tif','.ico','.svg')
 
-if (-not (Test-Path $snipsFolder)) {
-    New-Item -ItemType Directory -Path $snipsFolder -Force | Out-Null
+if (-not (Test-Path $appFolder)) {
+    New-Item -ItemType Directory -Path $appFolder -Force | Out-Null
 }
 
 # =========================================================
@@ -34,7 +34,7 @@ if (-not (Test-Path $snipsFolder)) {
 # Modifier constants
 $MOD_ALT = 0x0001; $MOD_CTRL = 0x0002; $MOD_SHIFT = 0x0004; $MOD_WIN = 0x0008
 
-$script:settings = @{ X = -1; Y = -1; AutoPaste = $false; HotkeyMods = 6; HotkeyKey = 0x56 }
+$script:settings = @{ X = -1; Y = -1; AutoPaste = $false; HotkeyMods = 6; HotkeyKey = 0x56; SnipsFolder = "" }
 # Default: Ctrl(2)+Shift(4)=6, V=0x56
 
 function Load-Settings {
@@ -46,8 +46,32 @@ function Load-Settings {
             if ($null -ne $json.AutoPaste) { $script:settings.AutoPaste = $json.AutoPaste }
             if ($null -ne $json.HotkeyMods) { $script:settings.HotkeyMods = $json.HotkeyMods }
             if ($null -ne $json.HotkeyKey) { $script:settings.HotkeyKey = $json.HotkeyKey }
+            if ($null -ne $json.SnipsFolder -and $json.SnipsFolder -ne "") { $script:settings.SnipsFolder = $json.SnipsFolder }
         } catch {}
     }
+}
+
+function Get-SnipsFolder {
+    if ($script:settings.SnipsFolder -ne "" -and (Test-Path $script:settings.SnipsFolder)) {
+        return $script:settings.SnipsFolder
+    }
+    return $appFolder
+}
+
+function Set-SnipsFolder {
+    $browser = New-Object System.Windows.Forms.FolderBrowserDialog
+    $browser.Description = "Choose where to save snips"
+    $browser.SelectedPath = Get-SnipsFolder
+    $browser.ShowNewFolderButton = $true
+    if ($browser.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        $script:settings.SnipsFolder = $browser.SelectedPath
+        Save-Settings
+        $notifyIcon.BalloonTipTitle = "ClipFloat"
+        $notifyIcon.BalloonTipText = "Snips folder: $($browser.SelectedPath)"
+        $notifyIcon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
+        $notifyIcon.ShowBalloonTip(2000)
+    }
+    $browser.Dispose()
 }
 
 function Get-HotkeyDisplayText {
@@ -195,7 +219,7 @@ Load-Settings
 # =========================================================
 try {
     $cutoff = (Get-Date).AddDays(-$autoCleanupDays)
-    Get-ChildItem ([System.IO.Path]::Combine($snipsFolder, "snip_*.png")) -ErrorAction SilentlyContinue |
+    Get-ChildItem ([System.IO.Path]::Combine((Get-SnipsFolder), "snip_*.png")) -ErrorAction SilentlyContinue |
         Where-Object { $_.LastWriteTime -lt $cutoff } |
         Remove-Item -Force -ErrorAction SilentlyContinue
 } catch {}
@@ -209,7 +233,7 @@ $size = 56
 $script:orbImage = $null
 $orbPath = [System.IO.Path]::Combine($PSScriptRoot, "orb.png")
 if (-not (Test-Path $orbPath)) {
-    $orbPath = [System.IO.Path]::Combine($snipsFolder, "orb.png")
+    $orbPath = [System.IO.Path]::Combine($appFolder, "orb.png")
 }
 if (Test-Path $orbPath) {
     $script:orbImage = New-Object System.Drawing.Bitmap($orbPath)
@@ -294,7 +318,7 @@ $trayMenu.Items.Add("-") | Out-Null
 
 $trayOpenItem = New-Object System.Windows.Forms.ToolStripMenuItem("Open Snips Folder")
 $trayOpenItem.ForeColor = [System.Drawing.Color]::White
-$trayOpenItem.Add_Click({ Start-Process "explorer.exe" $snipsFolder })
+$trayOpenItem.Add_Click({ Start-Process "explorer.exe" (Get-SnipsFolder) })
 $trayMenu.Items.Add($trayOpenItem) | Out-Null
 
 $trayMenu.Items.Add("-") | Out-Null
@@ -367,7 +391,7 @@ function Get-ClipboardImagePath {
             $img = [System.Windows.Forms.Clipboard]::GetImage()
             if ($null -ne $img) {
                 $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-                $filePath = [System.IO.Path]::Combine($snipsFolder, "snip_$timestamp.png")
+                $filePath = [System.IO.Path]::Combine((Get-SnipsFolder), "snip_$timestamp.png")
                 $img.Save($filePath, [System.Drawing.Imaging.ImageFormat]::Png)
                 $img.Dispose()
             }
@@ -432,7 +456,7 @@ function Get-RecentSnips {
     $allSnips = @()
 
     # Get saved snips
-    $snipFiles = Get-ChildItem ([System.IO.Path]::Combine($snipsFolder, "snip_*.png")) -ErrorAction SilentlyContinue |
+    $snipFiles = Get-ChildItem ([System.IO.Path]::Combine((Get-SnipsFolder), "snip_*.png")) -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First $maxHistoryItems
 
@@ -559,16 +583,23 @@ function Build-ContextMenu {
     $contextMenu.Items.Add("-") | Out-Null
 
     # --- Open folder ---
+    $snipsFolderPath = Get-SnipsFolder
     $openItem = New-Object System.Windows.Forms.ToolStripMenuItem("Open Snips Folder")
     $openItem.ForeColor = [System.Drawing.Color]::White
-    $openItem.Add_Click({ Start-Process "explorer.exe" $snipsFolder })
+    $openItem.Add_Click({ Start-Process "explorer.exe" (Get-SnipsFolder) })
     $contextMenu.Items.Add($openItem) | Out-Null
+
+    # --- Change snips folder ---
+    $changeFolderItem = New-Object System.Windows.Forms.ToolStripMenuItem("Change Snips Folder...")
+    $changeFolderItem.ForeColor = [System.Drawing.Color]::FromArgb(180, 180, 180)
+    $changeFolderItem.Add_Click({ Set-SnipsFolder })
+    $contextMenu.Items.Add($changeFolderItem) | Out-Null
 
     # --- Clear snips ---
     $clearItem = New-Object System.Windows.Forms.ToolStripMenuItem("Clear All Snips")
     $clearItem.ForeColor = [System.Drawing.Color]::White
     $clearItem.Add_Click({
-        $snips = Get-ChildItem ([System.IO.Path]::Combine($snipsFolder, "snip_*.png")) -ErrorAction SilentlyContinue
+        $snips = Get-ChildItem ([System.IO.Path]::Combine((Get-SnipsFolder), "snip_*.png")) -ErrorAction SilentlyContinue
         $count = ($snips | Measure-Object).Count
         if ($count -gt 0) {
             $result = [System.Windows.Forms.MessageBox]::Show(
